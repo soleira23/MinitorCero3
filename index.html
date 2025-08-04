@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Monitor de Operaciones Abiertas</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      background: #111;
+      color: #eee;
+      padding: 15px;
+      margin: 0;
+    }
+    h2 {
+      font-size: 1.2em;
+      margin-bottom: 10px;
+    }
+    input, button {
+      margin: 5px 0;
+      padding: 10px;
+      width: 100%;
+      font-size: 1em;
+      border: none;
+      border-radius: 4px;
+      box-sizing: border-box;
+    }
+    button {
+      background: #0f0;
+      color: #000;
+      cursor: pointer;
+    }
+    button:hover {
+      background: #0c0;
+    }
+    table {
+      width: 100%;
+      margin-top: 20px;
+      border-collapse: collapse;
+    }
+    th, td {
+      border: 1px solid #444;
+      padding: 8px;
+      text-align: center;
+    }
+    @media (max-width: 600px) {
+      th, td {
+        font-size: 12px;
+        padding: 6px;
+      }
+    }
+  </style>
+</head>
+<body>
+
+  <h2>🔐 Ingresar hasta 3 tokens API</h2>
+  <input id="token1" placeholder="Token 1" />
+  <input id="token2" placeholder="Token 2" />
+  <input id="token3" placeholder="Token 3" />
+  <button onclick="guardarTokens()">Guardar tokens</button>
+
+  <h2>📊 Operaciones abiertas por token</h2>
+  <table>
+    <thead>
+      <tr>
+        <th>#</th>
+        <th>Token</th>
+        <th>Operaciones abiertas</th>
+      </tr>
+    </thead>
+    <tbody id="tabla"></tbody>
+  </table>
+
+  <h2>🕒 Detalle de operaciones detectadas</h2>
+  <table>
+    <thead>
+      <tr>
+        <th>Hora</th>
+        <th>Moneda</th>
+        <th>Dirección</th>
+        <th>Token</th>
+      </tr>
+    </thead>
+    <tbody id="tablaOperacion"></tbody>
+  </table>
+
+  <script>
+    const API_URL = "https://api.zaffex.com/token/trades/open";
+    const operacionesDetectadas = new Set();
+
+    // Cargar tokens guardados
+    const tokens = JSON.parse(localStorage.getItem("apiTokens")) || [];
+    document.getElementById("token1").value = tokens[0] || "";
+    document.getElementById("token2").value = tokens[1] || "";
+    document.getElementById("token3").value = tokens[2] || "";
+
+    function guardarTokens() {
+      const nuevos = [
+        document.getElementById("token1").value.trim(),
+        document.getElementById("token2").value.trim(),
+        document.getElementById("token3").value.trim()
+      ].filter(t => t !== "");
+      localStorage.setItem("apiTokens", JSON.stringify(nuevos));
+      location.reload();
+    }
+
+    async function getOpenTrades(token) {
+      try {
+        const response = await fetch(API_URL, {
+          method: "GET",
+          headers: {
+            "api-token": token
+          }
+        });
+        const trades = await response.json();
+        return Array.isArray(trades) ? trades : [];
+      } catch (err) {
+        console.error("Error con token:", token, err);
+        return [];
+      }
+    }
+
+    async function actualizarTabla() {
+      const activos = JSON.parse(localStorage.getItem("apiTokens")) || [];
+      const tabla = document.getElementById("tabla");
+      tabla.innerHTML = "";
+
+      for (let i = 0; i < activos.length; i++) {
+        const token = activos[i];
+        const trades = await getOpenTrades(token);
+        const count = trades.length;
+
+        const fila = document.createElement("tr");
+        fila.innerHTML = `
+          <td>${i + 1}</td>
+          <td>${token.slice(0, 10)}...</td>
+          <td>${count}</td>
+        `;
+        tabla.appendChild(fila);
+
+        // 🔔 Detectar operación cero
+        if (count === 0 && !operacionesDetectadas.has("zero-" + token)) {
+          operacionesDetectadas.add("zero-" + token);
+          const audio0 = new Audio("https://actions.google.com/sounds/v1/cartoon/cartoon_boing.ogg");
+          audio0.play();
+        }
+
+        // 📊 Mostrar todas las operaciones (acumulativas)
+        for (const op of trades) {
+          if (!operacionesDetectadas.has(op.tradeId)) {
+            operacionesDetectadas.add(op.tradeId);
+
+            // Sonido solo si es la primera operación del token
+            if (count === 1) {
+              const audio1 = new Audio("https://actions.google.com/sounds/v1/alarms/beep_short.ogg");
+              audio1.play();
+            }
+
+            const hora = new Date().toLocaleTimeString();
+            const filaOp = document.createElement("tr");
+            filaOp.innerHTML = `
+              <td>${hora}</td>
+              <td>${op.symbol || "?"}</td>
+              <td>${op.direction || "?"}</td>
+              <td>${token.slice(0, 10)}...</td>
+            `;
+            document.getElementById("tablaOperacion").appendChild(filaOp);
+          }
+        }
+      }
+    }
+
+    // Actualizar cada 5 segundos
+    setInterval(actualizarTabla, 5000);
+    actualizarTabla();
+  </script>
+
+</body>
+</html>
